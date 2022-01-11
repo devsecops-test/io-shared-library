@@ -13,19 +13,19 @@ def execute() {
     node('master') {
 
         stage('Checkout Code') {
-            git branch: 'production', url: 'https://github.com/devsecops-test/github-io-sample'
+            git branch: env.GIT_BRANCH, url: env.GIT_URL
         }
 
         stage('Building Source...') {
             //your build command, your way here...    
-            //sh '''mvn clean compile'''
+            sh env.BUILD_COMMAND
             echo 'build source code'
         }
 
         stage('IO - Setup Prescription') {
             echo 'Setup Prescription'
-            synopsysIO(connectors: [io(configName: 'iostaging', projectName: 'github-io-sample', workflowVersion: '2021.12.0.10-alpha'),
-                github(branch: 'production', configName: 'github-io-sample', owner: 'devsecops-test', repositoryName: 'github-io-sample'),
+            synopsysIO(connectors: [io(configName: env.IO_PROJECT, projectName: env.GIT_PROJECT, workflowVersion: env.WORKFLOW_VERSION),
+                github(branch: env.GIT_BRANCH, configName: env.GIT_USR_PROJECT, owner: env.GIT_USER, repositoryName: env.GIT_PROJECT),
                 buildBreaker(configName: 'BB-ALL')
             ]) {
                 sh 'io --stage io'
@@ -54,7 +54,7 @@ def execute() {
         stage('SAST - Polaris') {
             echo 'Running SAST using Polaris'
             synopsysIO(connectors: [
-                [$class: 'PolarisPipelineConfig', configName: 'csprod-polaris', projectName: 'sig-devsecops/github-io-sample']
+                [$class: 'PolarisPipelineConfig', configName: env.POLARIS_PROJECT, projectName: env.GIT_USR_PROJECT]
             ]) {
                 sh 'io --stage execution --state io_state.json'
             }
@@ -63,15 +63,15 @@ def execute() {
         stage('IO - Workflow') {
             echo 'Execute Workflow Stage'
             synopsysIO() {
-                synopsysIO(connectors: [slack(configName: 'io-qa')]) {
+                synopsysIO(connectors: [slack(configName: env.SLACK_CHANNEL)]) {
                     sh 'io --stage workflow --state io_state.json'
                 }
             }
         }
 
         stage('IO - Archive') {
-            //archiveArtifacts artifacts: '**/*-results*.json', allowEmptyArchive: 'true'
-            archiveArtifacts '**/*-results*.json'
+            archiveArtifacts artifacts: '**/*-results*.json', allowEmptyArchive: 'true'
+            archiveArtifacts artifacts: '**/*-report*.*', allowEmptyArchive: 'true'
             //remove the state json file it has sensitive information
             //sh 'rm io_state.json'
         }
